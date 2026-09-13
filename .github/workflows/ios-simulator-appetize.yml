@@ -20,6 +20,13 @@ jobs:
       - name: Build iOS simulator app
         run: flutter build ios --simulator --no-codesign
 
+      - name: Ad-hoc sign app
+        # Firebase Auth needs Keychain access, which the Simulator's Keychain
+        # Services refuses to grant to a fully unsigned binary (--no-codesign
+        # above strips signing entirely). An empty ad-hoc signature (no Apple
+        # account needed) is enough to satisfy it.
+        run: codesign --force --deep --sign - build/ios/iphonesimulator/Runner.app
+
       - name: Zip app bundle
         run: |
           cd build/ios/iphonesimulator
