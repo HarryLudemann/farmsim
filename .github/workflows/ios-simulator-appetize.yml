@@ -1,0 +1,62 @@
+name: iOS Simulator Build → Appetize
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Build iOS simulator app
+        run: flutter build ios --simulator --no-codesign
+
+      - name: Zip app bundle
+        run: |
+          cd build/ios/iphonesimulator
+          zip -r Runner.zip Runner.app
+
+      - name: Upload to Appetize
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+          APPETIZE_PUBLIC_KEY: ${{ secrets.APPETIZE_PUBLIC_KEY }}
+        run: |
+          if [ -z "$APPETIZE_API_TOKEN" ]; then
+            echo "::error::APPETIZE_API_TOKEN secret not set. Create a free account at appetize.io, copy your API token from Account Settings, and add it as a repo secret named APPETIZE_API_TOKEN (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+
+          if [ -n "$APPETIZE_PUBLIC_KEY" ]; then
+            RESPONSE=$(curl -s -X PUT "https://api.appetize.io/v1/apps/$APPETIZE_PUBLIC_KEY" \
+              -H "X-API-KEY: $APPETIZE_API_TOKEN" \
+              -F "file=@build/ios/iphonesimulator/Runner.zip" \
+              -F "platform=ios")
+          else
+            RESPONSE=$(curl -s -X POST "https://api.appetize.io/v1/apps" \
+              -H "X-API-KEY: $APPETIZE_API_TOKEN" \
+              -F "file=@build/ios/iphonesimulator/Runner.zip" \
+              -F "platform=ios")
+          fi
+
+          echo "$RESPONSE"
+          PUBLIC_KEY=$(echo "$RESPONSE" | jq -r '.publicKey // empty')
+          APP_URL=$(echo "$RESPONSE" | jq -r '.appURL // empty')
+
+          {
+            echo "## Appetize build ready"
+            echo ""
+            echo "**Test link:** $APP_URL"
+            echo ""
+            if [ -z "$APPETIZE_PUBLIC_KEY" ]; then
+              echo "First build — add \`$PUBLIC_KEY\` as a repo secret named \`APPETIZE_PUBLIC_KEY\` so future builds update this same app instead of creating a new one each time."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
