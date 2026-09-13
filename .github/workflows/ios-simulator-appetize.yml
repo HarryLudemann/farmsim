@@ -20,12 +20,29 @@ jobs:
       - name: Build iOS simulator app
         run: flutter build ios --simulator --no-codesign
 
-      - name: Ad-hoc sign app
-        # Firebase Auth needs Keychain access, which the Simulator's Keychain
-        # Services refuses to grant to a fully unsigned binary (--no-codesign
-        # above strips signing entirely). An empty ad-hoc signature (no Apple
-        # account needed) is enough to satisfy it.
-        run: codesign --force --deep --sign - build/ios/iphonesimulator/Runner.app
+      - name: Ad-hoc sign app with Keychain entitlements
+        # Firebase Auth needs Keychain access. The Simulator's Keychain
+        # Services checks for an application-identifier/keychain-access-groups
+        # entitlement, which a bare ad-hoc signature doesn't provide — only a
+        # real signing identity normally would. Simulator (unlike a real
+        # device) doesn't cryptographically verify the team prefix, so a
+        # placeholder value is enough; no Apple account needed.
+        run: |
+          cat > entitlements.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>application-identifier</key>
+              <string>FARMSIM.com.harryludemann.farminggame</string>
+              <key>keychain-access-groups</key>
+              <array>
+                  <string>FARMSIM.com.harryludemann.farminggame</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+          codesign --force --deep --sign - --entitlements entitlements.plist build/ios/iphonesimulator/Runner.app
 
       - name: Zip app bundle
         run: |
